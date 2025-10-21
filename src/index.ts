@@ -52,6 +52,9 @@ async function sendTelegramMessage(
 ): Promise<string> {
   try {
     const url = `${TELEGRAM_API_BASE}/bot${BOT_TOKEN}/sendMessage`;
+    console.error(`[DEBUG] Sending to URL: ${url}`);
+    console.error(`[DEBUG] Chat ID: ${CHAT_ID}`);
+    console.error(`[DEBUG] Message length: ${message.length}`);
 
     const params: Record<string, string> = {
       chat_id: CHAT_ID,
@@ -62,7 +65,10 @@ async function sendTelegramMessage(
       params.parse_mode = parse_mode;
     }
 
+    console.error(`[DEBUG] Params:`, params);
     const response = await axios.post(url, params);
+    console.error(`[DEBUG] Response status:`, response.status);
+    console.error(`[DEBUG] Response data:`, response.data);
 
     if (!response.data.ok) {
       throw new Error(
@@ -73,14 +79,18 @@ async function sendTelegramMessage(
     const result = response.data.result as Record<string, unknown>;
     return `Message sent successfully to Telegram. Message ID: ${result.message_id}`;
   } catch (error) {
+    console.error(`[ERROR] Catch block error:`, error);
     if (axios.isAxiosError(error)) {
       const errorMessage =
         error.response?.data?.description || error.message || "Unknown error";
+      console.error(`[ERROR] Axios error: ${errorMessage}`);
       throw new Error(`Failed to send Telegram message: ${errorMessage}`);
     }
     if (error instanceof Error) {
+      console.error(`[ERROR] Error instance: ${error.message}`);
       throw new Error(`Failed to send Telegram message: ${error.message}`);
     }
+    console.error(`[ERROR] Unknown error type`);
     throw new Error("Failed to send Telegram message: Unknown error");
   }
 }
