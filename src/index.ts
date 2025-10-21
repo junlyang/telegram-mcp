@@ -1,3 +1,5 @@
+import "dotenv/config.js";
+import axios from "axios";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
   ListToolsRequestSchema,
@@ -60,32 +62,22 @@ async function sendTelegramMessage(
       params.parse_mode = parse_mode;
     }
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(params),
-    });
+    const response = await axios.post(url, params);
 
-    if (!response.ok) {
-      const errorData = (await response.json()) as Record<string, unknown>;
-      const errorMessage =
-        (errorData.description as string) || `HTTP ${response.status} error`;
-      throw new Error(`Telegram API error: ${errorMessage}`);
-    }
-
-    const data = (await response.json()) as Record<string, unknown>;
-
-    if (!data.ok) {
+    if (!response.data.ok) {
       throw new Error(
-        `Telegram API returned error: ${(data.description as string) || "Unknown error"}`
+        `Telegram API returned error: ${(response.data.description as string) || "Unknown error"}`
       );
     }
 
-    const result = data.result as Record<string, unknown>;
+    const result = response.data.result as Record<string, unknown>;
     return `Message sent successfully to Telegram. Message ID: ${result.message_id}`;
   } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const errorMessage =
+        error.response?.data?.description || error.message || "Unknown error";
+      throw new Error(`Failed to send Telegram message: ${errorMessage}`);
+    }
     if (error instanceof Error) {
       throw new Error(`Failed to send Telegram message: ${error.message}`);
     }
