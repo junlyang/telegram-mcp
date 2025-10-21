@@ -133,11 +133,18 @@ async function processToolCall(
   };
 }
 
-// Initialize the MCP server
-const server = new Server({
-  name: "telegram-mcp",
-  version: "1.0.0",
-});
+// Initialize the MCP server with capabilities
+const server = new Server(
+  {
+    name: "telegram-mcp",
+    version: "1.0.0",
+  },
+  {
+    capabilities: {
+      tools: {},
+    },
+  }
+);
 
 // Handler for listing available tools
 server.setRequestHandler(ListToolsRequestSchema, async () => {
