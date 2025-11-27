@@ -1,5 +1,3 @@
-import "dotenv/config.js";
-import axios from "axios";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { ListToolsRequestSchema, CallToolRequestSchema, } from "@modelcontextprotocol/sdk/types.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -33,9 +31,6 @@ const SendMessageSchema = z.object({
 async function sendTelegramMessage(message, parse_mode) {
     try {
         const url = `${TELEGRAM_API_BASE}/bot${BOT_TOKEN}/sendMessage`;
-        console.error(`[DEBUG] Sending to URL: ${url}`);
-        console.error(`[DEBUG] Chat ID: ${CHAT_ID}`);
-        console.error(`[DEBUG] Message length: ${message.length}`);
         const params = {
             chat_id: CHAT_ID,
             text: message,
@@ -43,28 +38,29 @@ async function sendTelegramMessage(message, parse_mode) {
         if (parse_mode) {
             params.parse_mode = parse_mode;
         }
-        console.error(`[DEBUG] Params:`, params);
-        const response = await axios.post(url, params);
-        console.error(`[DEBUG] Response status:`, response.status);
-        console.error(`[DEBUG] Response data:`, response.data);
-        if (!response.data.ok) {
-            throw new Error(`Telegram API returned error: ${response.data.description || "Unknown error"}`);
+        const response = await fetch(url, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(params),
+        });
+        if (!response.ok) {
+            const errorData = (await response.json());
+            const errorMessage = errorData.description || `HTTP ${response.status} error`;
+            throw new Error(`Telegram API error: ${errorMessage}`);
         }
-        const result = response.data.result;
+        const data = (await response.json());
+        if (!data.ok) {
+            throw new Error(`Telegram API returned error: ${data.description || "Unknown error"}`);
+        }
+        const result = data.result;
         return `Message sent successfully to Telegram. Message ID: ${result.message_id}`;
     }
     catch (error) {
-        console.error(`[ERROR] Catch block error:`, error);
-        if (axios.isAxiosError(error)) {
-            const errorMessage = error.response?.data?.description || error.message || "Unknown error";
-            console.error(`[ERROR] Axios error: ${errorMessage}`);
-            throw new Error(`Failed to send Telegram message: ${errorMessage}`);
-        }
         if (error instanceof Error) {
-            console.error(`[ERROR] Error instance: ${error.message}`);
             throw new Error(`Failed to send Telegram message: ${error.message}`);
         }
-        console.error(`[ERROR] Unknown error type`);
         throw new Error("Failed to send Telegram message: Unknown error");
     }
 }
@@ -107,14 +103,10 @@ async function processToolCall(toolName, toolInput) {
         text: `Unknown tool: ${toolName}`,
     };
 }
-// Initialize the MCP server with capabilities
+// Initialize the MCP server
 const server = new Server({
     name: "telegram-mcp",
     version: "1.0.0",
-}, {
-    capabilities: {
-        tools: {},
-    },
 });
 // Handler for listing available tools
 server.setRequestHandler(ListToolsRequestSchema, async () => {

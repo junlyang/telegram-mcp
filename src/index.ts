@@ -1,5 +1,3 @@
-import "dotenv/config.js";
-import { execSync } from "child_process";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
   ListToolsRequestSchema,
@@ -14,21 +12,11 @@ import { z } from "zod";
 const BOT_TOKEN: string = process.env.TELEGRAM_BOT_TOKEN || "";
 const CHAT_ID: string = process.env.TELEGRAM_CHAT_ID || "";
 
-console.error(`[INIT] BOT_TOKEN loaded: ${BOT_TOKEN ? "yes" : "no"}`);
-console.error(`[INIT] CHAT_ID loaded: ${CHAT_ID ? "yes" : "no"}`);
-
 if (!BOT_TOKEN || !CHAT_ID) {
   console.error(
     "Error: TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID environment variables are required"
   );
   process.exit(1);
-}
-
-// Logging setup
-function log(message: string) {
-  const timestamp = new Date().toISOString();
-  const logMessage = `${timestamp} ${message}`;
-  console.error(logMessage);
 }
 
 // Telegram API base URL
@@ -62,53 +50,46 @@ async function sendTelegramMessage(
 ): Promise<string> {
   try {
     const url = `${TELEGRAM_API_BASE}/bot${BOT_TOKEN}/sendMessage`;
-    log(`[DEBUG] Sending to URL: ${url}`);
-    log(`[DEBUG] Chat ID: ${CHAT_ID}`);
-    log(`[DEBUG] Message length: ${message.length}`);
 
-    // Build curl command with form data
-    let curlCmd = `curl -s -X POST "${url}"`;
-    curlCmd += ` -d "chat_id=${CHAT_ID}"`;
-    curlCmd += ` -d "text=${message.replace(/"/g, '\\"')}"`;
+    const params: Record<string, string> = {
+      chat_id: CHAT_ID,
+      text: message,
+    };
 
     if (parse_mode) {
-      curlCmd += ` -d "parse_mode=${parse_mode}"`;
+      params.parse_mode = parse_mode;
     }
 
-    log(`[DEBUG] Executing curl command`);
-
-    // Execute curl and capture output
-    const responseStr = execSync(curlCmd, {
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(params),
     });
 
-    log(`[DEBUG] Response: ${responseStr}`);
-
-    const responseData = JSON.parse(responseStr) as Record<string, unknown>;
-    log(`[DEBUG] Response.ok: ${responseData.ok}`);
-    log(`[DEBUG] Response.description: ${responseData.description}`);
-
-    if (!responseData.ok) {
-      const errorDesc = (responseData.description as string) || "Unknown error";
-      throw new Error(`Telegram API error: ${errorDesc}`);
+    if (!response.ok) {
+      const errorData = (await response.json()) as Record<string, unknown>;
+      const errorMessage =
+        (errorData.description as string) || `HTTP ${response.status} error`;
+      throw new Error(`Telegram API error: ${errorMessage}`);
     }
 
-    const result = responseData.result as Record<string, unknown>;
-    log(`[DEBUG] Message ID: ${result.message_id}`);
+    const data = (await response.json()) as Record<string, unknown>;
+
+    if (!data.ok) {
+      throw new Error(
+        `Telegram API returned error: ${(data.description as string) || "Unknown error"}`
+      );
+    }
+
+    const result = data.result as Record<string, unknown>;
     return `Message sent successfully to Telegram. Message ID: ${result.message_id}`;
   } catch (error) {
-    let errorDetails = "";
-
     if (error instanceof Error) {
-      errorDetails = error.message;
-      log(`[ERROR] ${errorDetails}`);
-      throw error;
+      throw new Error(`Failed to send Telegram message: ${error.message}`);
     }
-
-    errorDetails = `Unknown error: ${JSON.stringify(error)}`;
-    log(`[ERROR] ${errorDetails}`);
-    throw new Error(errorDetails);
+    throw new Error("Failed to send Telegram message: Unknown error");
   }
 }
 
@@ -135,23 +116,21 @@ async function processToolCall(
         text: result,
       };
     } catch (error) {
-      let errorMessage = "Unknown error occurred";
-
       if (error instanceof z.ZodError) {
-        errorMessage = `Invalid input: ${error.errors
-          .map((e) => e.message)
-          .join(", ")}`;
-      } else if (error instanceof Error) {
-        errorMessage = error.message;
-      } else {
-        errorMessage = JSON.stringify(error);
+        return {
+          type: "text",
+          text: `Invalid input: ${error.errors.map((e) => e.message).join(", ")}`,
+        };
       }
-
-      console.error(`[TOOL ERROR] ${errorMessage}`);
-
+      if (error instanceof Error) {
+        return {
+          type: "text",
+          text: `Error: ${error.message}`,
+        };
+      }
       return {
         type: "text",
-        text: `Error: ${errorMessage}`,
+        text: "Error: Unknown error occurred",
       };
     }
   }
@@ -162,18 +141,11 @@ async function processToolCall(
   };
 }
 
-// Initialize the MCP server with capabilities
-const server = new Server(
-  {
-    name: "telegram-mcp",
-    version: "1.0.0",
-  },
-  {
-    capabilities: {
-      tools: {},
-    },
-  }
-);
+// Initialize the MCP server
+const server = new Server({
+  name: "telegram-mcp",
+  version: "1.0.0",
+});
 
 // Handler for listing available tools
 server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -222,11 +194,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  log("Telegram MCP server started successfully");
-  log(`Chat ID: ${CHAT_ID}`);
+  console.error("Telegram MCP server started successfully");
+  console.error(`Chat ID: ${CHAT_ID}`);
 }
 
 main().catch((error) => {
-  log(`Fatal error: ${JSON.stringify(error)}`);
+  console.error("Fatal error:", error);
   process.exit(1);
 });
